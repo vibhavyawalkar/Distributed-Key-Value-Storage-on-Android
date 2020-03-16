@@ -1,0 +1,7 @@
+#Internal package file, do not edit.
+#Wed Feb 12 22:55:48 EST 2020
+0.baseType=DIRECTORY
+0.base=/home/vibhav/AndroidStudioProjects/SimpleMessenger/app/build/intermediates/dex/debug/mergeDexDebug/out
+0.path=classes.dex
+0.set=DEX
+count=1
