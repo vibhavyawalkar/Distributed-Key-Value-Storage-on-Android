@@ -43,7 +43,7 @@ public class OnPTestClickListener implements OnClickListener {
     public OnPTestClickListener(TextView _tv, ContentResolver _cr) {
         mTextView = _tv;
         mContentResolver = _cr;
-        mUri = buildUri("content", "edu.buffalo.cse.cse486586.groupmessenger1.provider");
+        mUri = buildUri("content", "edu.buffalo.cse.cse486586.groupmessenger2.provider");
         mContentValues = initTestValues();
     }
 
