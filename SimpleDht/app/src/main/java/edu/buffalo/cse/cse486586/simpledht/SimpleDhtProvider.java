@@ -19,6 +19,7 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
+import android.opengl.Matrix;
 import android.os.AsyncTask;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -135,6 +136,7 @@ public class SimpleDhtProvider extends ContentProvider {
                     BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                     // Send data to the client
                     PrintStream ps = new PrintStream(socket.getOutputStream());
+
                     String receive = "";
                     if ((receive = br.readLine()) != null) {
                         Log.e(TAG, "Instruction received from the client " + receive);
@@ -169,7 +171,10 @@ public class SimpleDhtProvider extends ContentProvider {
             } catch (Exception e) {
                 Log.e(TAG, "ServerSide generic exception");
             }
+            String msgToSend = "ack"+ "\n";
+            ps.println(msgToSend);
 
+            Log.e(TAG, "PredHash:" + predNode +" " + "SuccHash:" + succNode);
         } else if(msgtokens[0].equalsIgnoreCase("PRED")) {
             predNode = msgtokens[1];
         } else if(msgtokens[0].equalsIgnoreCase("SUCC")) {
@@ -183,30 +188,65 @@ public class SimpleDhtProvider extends ContentProvider {
                 String filename = genHash("DHT" + msgtokens[1]);
                 if(node.compareTo(filename) > 0 && predNode.compareTo(filename) < 0) {
                     String [] col = {"key", "value"};
-                    MatrixCursor cursor_ = new MatrixCursor(col);
-                    cursor_ = (MatrixCursor)query(mUri, null, msgtokens[1], null, null);
-                    String msg = "QUERYRES" + "-" + cursor_.toString();
-                    sendUpdate(msgtokens[2], msg);
-                } else { // Forward to the ring successor
-                    sendUpdate(succPort, message);
+                    String keyval = "";
+                    MatrixCursor cur = (MatrixCursor)query(mUri, null, msgtokens[1], null, null);
+                    cur.moveToFirst();
+                    if(cur.getCount() > 0) {
+                        keyval = cur.getString(cur.getColumnIndex("key")) + "-" +
+                                cur.getString(cur.getColumnIndex("value"));
+                    }
+                    cur.close();
+                    keyval = keyval + "\n";
+                    ps.println(keyval);
+                    Log.e(TAG, "Send keyval query " + keyval);
+                    //sendUpdate(msgtokens[2], msg);
+                } else { // Forward to the ring successor and wait for response from him
+                    try {
+                        Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(succPort));
+                        String msgToSend = message + "\n";
+                        // Send Joining request
+                        OutputStream out = s.getOutputStream();
+                        DataOutputStream dos = new DataOutputStream(out);
+                        dos.writeBytes(msgToSend);
+                        dos.flush();
+                        // Receive response
+                        BufferedReader br = new BufferedReader(new InputStreamReader(s.getInputStream()));
+                        String receive = br.readLine();
+                        //Forward it to the one who queried initially
+                        ps.println(receive); // keyval
+                    } catch(UnknownHostException e) {
+                        Log.e(TAG, "UnknownHostException");
+                    } catch(IOException e) {
+                        Log.e(TAG, "IOException");
+                    } catch(Exception e) {
+                        Log.e(TAG, "Generic Exception");
+                    }
                 }
             } catch(NoSuchAlgorithmException e) {
                 Log.e(TAG, "No such algo exception");
             }
 
         } else if(msgtokens[0].equalsIgnoreCase("QUERY*")) {
-            if(msgtokens[1] == nodePort) { // I initiated the query, now I should have the final cursor
-            } else  { // Add my entire cursor and forward to my successor
-
+            String [] col = {"key", "value"};
+            String keyval = "";
+            MatrixCursor cur = (MatrixCursor)query(mUri, null, "@", null, null);
+            cur.moveToFirst();
+            if(cur.getCount() > 0) {
+                do {
+                    String key = cur.getString(cur.getColumnIndex("key"));
+                    String val = cur.getString(cur.getColumnIndex("value"));
+                    keyval = keyval + key + "-" + val + "-";
+                } while(cur.moveToNext());
+                cur.close();
+                if(keyval.length() > 0) {
+                    keyval = keyval.substring(0, keyval.length()-1); // Removing the last extra "-"
+                }
             }
+            keyval = keyval + "\n";
+            ps.println(keyval);
+            Log.e(TAG, "Send all keyval for * query " + keyval);
         }
-
-        String msgToSend = "ack"+ "\n";
-        ps.println(msgToSend);
-
-        Log.e(TAG, "PredHash:" + predNode +" " + "SuccHash:" + succNode);
         return;
-
     }
 
     protected void addToRing(String port, String hash) {
@@ -271,6 +311,68 @@ public class SimpleDhtProvider extends ContentProvider {
         Log.e(TAG, "Successfully added to the ring");
     }
 
+    protected MatrixCursor starQuery(MatrixCursor cur) {
+        Log.e(TAG,"Entering starQuery");
+        for(int i = 0; i < portList.length; i++) {
+            try {
+                String remotePort = portList[i];
+                if(remotePort != nodePort) { // Not my port
+                    Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
+                            Integer.parseInt(remotePort));
+                    String msgToSend = "QUERY*" + "\n";
+
+                    OutputStream out = s.getOutputStream();
+                    DataOutputStream dos = new DataOutputStream(out);
+                    dos.writeBytes(msgToSend);
+                    dos.flush();
+
+                    // Receive response, all key values from cursor
+                    BufferedReader br = new BufferedReader(new InputStreamReader(s.getInputStream()));
+                    String receive = br.readLine();
+                    String [] keyvals = receive.split("-");
+                    for(int j = 0; j < keyvals.length; j+=2) {
+                        String[] row = {keyvals[j], keyvals[j+1]};
+                        cur.addRow(row);
+                    }
+                }
+            } catch (UnknownHostException e) {
+                Log.e(TAG, "ClientSide UnknownHostException");
+            } catch (IOException e) {
+                Log.e(TAG, "ClientSide IOException");
+            } catch (Exception e) {
+                Log.e(TAG, "ClientSide Generic Exception");
+            }
+        }
+        return cur;
+    }
+
+    protected MatrixCursor getQueryResponse(String msg, MatrixCursor cur) {
+        Log.e(TAG,"getQueryResponse");
+        try {
+            Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(succPort));
+            String msgToSend = msg + "\n";
+            // Send query
+            OutputStream out = s.getOutputStream();
+            DataOutputStream dos = new DataOutputStream(out);
+            dos.writeBytes(msgToSend);
+            dos.flush();
+            // Receive response
+            BufferedReader br = new BufferedReader(new InputStreamReader(s.getInputStream()));
+            String receive = br.readLine();
+            //Populate cursor and return
+            String [] keyvals = receive.split("-");
+            String[] row = {keyvals[0], keyvals[1]};
+            cur.addRow(row);
+        } catch(UnknownHostException e) {
+            Log.e(TAG, "ClientSide UnknownHostException");
+        } catch(IOException e) {
+            Log.e(TAG, "ClientSide IOException");
+        } catch(Exception e) {
+            Log.e(TAG, "ClientSide Generic Exception");
+        }
+        return cur;
+    }
+
     protected void sendUpdate(String port, String msg) {
         Log.e(TAG,"Entering sendUpdate");
         try {
@@ -301,7 +403,8 @@ public class SimpleDhtProvider extends ContentProvider {
         // TODO Auto-generated method stub
         try {
             String filename = genHash("DHT" + values.get("key").toString());
-            if(node.compareTo(filename) > 0 && predNode.compareTo(filename) < 0) { // less than me and greater than my pred, then it lies between me and my pred
+            if(node.compareTo(filename) > 0 && predNode.compareTo(filename) < 0) {
+                // less than me and greater than my pred, then it lies between me and my pred
                 // so, it belongs to me
 
                 Log.v("insert", "Creating file " + filename);
@@ -320,7 +423,6 @@ public class SimpleDhtProvider extends ContentProvider {
         } catch(Exception e) {
             Log.e("insert", "File write failed " + e.toString());
         }
-
         return uri;
     }
 
@@ -331,7 +433,7 @@ public class SimpleDhtProvider extends ContentProvider {
         Log.v("query", selection);
         String[] col = {"key", "value"};
         MatrixCursor cursor = new MatrixCursor(col);
-        MatrixCursor cc = new MatrixCursor(col);
+
         try {
             if (selection.compareTo("@") == 0 || selection.compareTo("*") == 0) { // all local
                 Log.e(TAG, "Query is @");
@@ -351,8 +453,7 @@ public class SimpleDhtProvider extends ContentProvider {
                 }
                 if(selection.compareTo("*") == 0)
                 {
-                    String msg = "QUERY*" + "-" + nodePort + "-" + cursor.toString();
-                    sendUpdate(succPort,msg);
+                    return starQuery(cursor);
                 }
             } else {
                 String filename = genHash("DHT" + selection);
@@ -371,7 +472,7 @@ public class SimpleDhtProvider extends ContentProvider {
                     cursor.addRow(row);
                 } else { // Forward to successor
                     String msg = "QUERY" + "-" + selection + "-" + nodePort;
-                    sendUpdate(succNode, msg);
+                    return getQueryResponse(msg, cursor);
                 }
             }
         } catch(Exception e) {
