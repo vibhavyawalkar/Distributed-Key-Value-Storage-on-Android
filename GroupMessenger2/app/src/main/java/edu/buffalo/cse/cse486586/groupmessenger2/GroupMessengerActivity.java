@@ -177,8 +177,10 @@ public class GroupMessengerActivity extends Activity {
                 }
             } catch (IOException e) {
                 Log.e(TAG, "Socket IO Exception");
+                lock.unlock();
             } catch (Exception e) {
                 Log.e(TAG, "Generic Server Exception");
+                lock.unlock();
             }
             return null;
         }
@@ -246,14 +248,14 @@ public class GroupMessengerActivity extends Activity {
 
                         Log.e(TAG, "Delivered Successfully");
                     } else {
-                        Log.e(TAG, "Find null data");
+                        Log.e(TAG, "Found null data");
                     }
                 } catch (IOException e) {
                     Log.e(TAG, "Exception reading the final priority!");
-                    lock.unlock();
+                    //lock.unlock();
                 } catch(Exception e) {
                     Log.e(TAG, "Generic Exception at server receiving the final priority");
-                    lock.unlock();
+                    //lock.unlock();
                 }
 /*
 
@@ -321,13 +323,13 @@ public class GroupMessengerActivity extends Activity {
                 try {
                     String  remotePort = portList[i];
 
-                    Log.e(TAG, "Connecting to port " + remotePort);
+                    Log.e(TAG, "Client:Connecting to port " + remotePort);
                     lock.lock();
                     clientSockets[i] = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
                             Integer.parseInt(remotePort));
                     //clientSockets[i].setSoTimeout(500);
                     String msgToSend = msgs[0].trim() + "\n";
-                    Log.e(TAG, "Message to send " + msgToSend);
+                    Log.e(TAG, "Client: Initial Message to send " + msgToSend);
                     // Send initial message
                     OutputStream out = clientSockets[i].getOutputStream();
                     dos[i] = new DataOutputStream(out);
@@ -337,23 +339,26 @@ public class GroupMessengerActivity extends Activity {
                     // Receive proposal from the client
                     BufferedReader br = new BufferedReader(new InputStreamReader(clientSockets[i].getInputStream()));
                     String receive = br.readLine();
-                    lock.unlock();
-                    Log.e(TAG, "Received proposal from server " + portList[i]);
+                    //lock.unlock();
+                    Log.e(TAG, "Client:Received proposal from server " + portList[i]);
                     String [] msgtokens = receive.split("-", 2);
 
-                    Log.e(TAG, "Message: " + msgtokens[0] + "SEQ:" + msgtokens[1]);
+                    Log.e(TAG, "Client:Message: " + msgtokens[0] + "SEQ:" + msgtokens[1]);
 
                     arr[i] = msgtokens[1];
 
                 } catch (UnknownHostException e) {
                     Log.e(TAG, "ClientTask UnknownHostException1");
                     arr[i] = "0-0";
+                    lock.unlock();
                 } catch (IOException e) {
                     Log.e(TAG, "ClientTask IOException1");
                     arr[i] = "0-0";
+                    lock.unlock();
                 } catch (Exception e) {
                     Log.e(TAG, "Generic Client Exception1");
                     arr[i] = "0-0";
+                    lock.unlock();
                 }
             }
             /* At this stage the client heard back from all the server's the proposed priorities
@@ -368,11 +373,11 @@ public class GroupMessengerActivity extends Activity {
 
                     String  remotePort = portList[i];
 
-                    Log.e(TAG, "Connecting to port " + remotePort);
+                    Log.e(TAG, "Client:Final priority sending, Connecting to port " + remotePort);
                     //clientSockets[i] = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
                             //Integer.parseInt(remotePort));
                     //clientSockets[i].setSoTimeout(2000);
-                    Log.e(TAG, "Message to send " + finalMessage);
+                    Log.e(TAG, "Client:Final priority message to send " + finalMessage);
                     // Send final sequence number with the  message to all the servers
                     //OutputStream out = clientSockets[i].getOutputStream();
                     //DataOutputStream dos = new DataOutputStream(out);
@@ -410,11 +415,11 @@ public class GroupMessengerActivity extends Activity {
                     }
                 }
                 ret = Integer.toString(finalSeq_part1) + "-" + Integer.toString(finalSeq_part2);
-                Log.e(TAG, "Final decided priority : " + ret);
+                Log.e(TAG, "Client:Final decided priority : " + ret);
             } catch(NullPointerException e) {
-                Log.e(TAG, "Null Pointer Exception when calculating final priority!");
+                Log.e(TAG, "Client:Null Pointer Exception when calculating final priority!");
             } catch(Exception e) {
-                Log.e(TAG, "Exception when calculating final priority");
+                Log.e(TAG, "Client:Exception when calculating final priority");
             }
             return ret;
         }
