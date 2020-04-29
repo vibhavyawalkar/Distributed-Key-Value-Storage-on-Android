@@ -65,12 +65,6 @@ public class SimpleDhtProvider extends ContentProvider {
     }
 
     @Override
-    public int delete(Uri uri, String selection, String[] selectionArgs) {
-        // TODO Auto-generated method stub
-        return 0;
-    }
-
-    @Override
     public String getType(Uri uri) {
         // TODO Auto-generated method stub
         return null;
@@ -251,6 +245,10 @@ public class SimpleDhtProvider extends ContentProvider {
             values.put("key", msgtokens[1]);
             values.put("value",msgtokens[2]);
             insert(mUri, values);
+        } else if(msgtokens[0].equalsIgnoreCase("DELETE")) {
+            delete(mUri, msgtokens[1], null);
+        } else if(msgtokens[0].equalsIgnoreCase("DELETE*")) {
+            delete(mUri, "@", null );
         } else if(msgtokens[0].equalsIgnoreCase("QUERY")) {
             try {
                 String filename = genHash(msgtokens[1]);
@@ -391,6 +389,32 @@ public class SimpleDhtProvider extends ContentProvider {
         }
     }
 
+    protected void starDeleteQuery() {
+        Log.e(TAG,"Entering starDeleteQuery");
+        for(int i = 0; i < portList.length; i++) {
+            try {
+                String remotePort = portList[i];
+                if (remotePort != nodePort) { // Not my port
+                    Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
+                            Integer.parseInt(remotePort));
+                    String msgToSend = "DELETE*" + "\n";
+
+                    OutputStream out = s.getOutputStream();
+                    DataOutputStream dos = new DataOutputStream(out);
+                    dos.writeBytes(msgToSend);
+                    dos.flush();
+                }
+            } catch (UnknownHostException e) {
+                Log.e(TAG, "ClientSide UnknownHostException");
+            } catch (IOException e) {
+                Log.e(TAG, "ClientSide IOException");
+            } catch (Exception e) {
+                Log.e(TAG, "ClientSide Generic Exception");
+            }
+        }
+        return;
+    }
+
     protected MatrixCursor starQuery(MatrixCursor cur) {
         Log.e(TAG,"Entering starQuery");
         for(int i = 0; i < portList.length; i++) {
@@ -444,11 +468,11 @@ public class SimpleDhtProvider extends ContentProvider {
             String[] row = {keyvals[0], keyvals[1]};
             cur.addRow(row);
         } catch(UnknownHostException e) {
-            Log.e(TAG, "ClientSide UnknownHostException");
+            Log.e(TAG, "getQueryResponse UnknownHostException");
         } catch(IOException e) {
-            Log.e(TAG, "ClientSide IOException");
+            Log.e(TAG, "getQueryResponse IOException");
         } catch(Exception e) {
-            Log.e(TAG, "ClientSide Generic Exception");
+            Log.e(TAG, "getQueryResponse ClientSide Generic Exception");
         }
         return cur;
     }
@@ -476,42 +500,6 @@ public class SimpleDhtProvider extends ContentProvider {
             Log.e("sendUpdate", "Generic Exception");
         }
         return;
-    }
-
-    protected String firstNodeInRing() {
-        String nodeID = "";
-        for(int i = 0; i < n.size(); i++)
-        {
-            Log.e(TAG, "Port at index:" + i +" " + n.get(i).portStr);
-            if(n.get(i).joined == 1) {
-                try {
-                    nodeID = genHash(String.valueOf(Integer.parseInt(n.get(i).portStr)/2));
-                } catch (NoSuchAlgorithmException e) {
-                    Log.e("firstNodeInRing", "Exception no such algo");
-                }
-                break;
-            }
-        }
-        Log.e(TAG, "Hash of first node in the ring:" + nodeID);
-        return nodeID;
-    }
-
-    protected String lastNodeInRing() {
-        String nodeID = "";
-        for(int i = n.size()-1; i >= 0; i++)
-        {
-            Log.e(TAG, "Port at index:" + i +" " + n.get(i).portStr);
-            if(n.get(i).joined == 1) {
-                try {
-                    nodeID = genHash(String.valueOf(Integer.parseInt(n.get(i).portStr)/2));
-                } catch (NoSuchAlgorithmException e) {
-                    Log.e("firstNodeInRing", "Exception no such algo");
-                }
-                break;
-            }
-        }
-        Log.e(TAG, "Hash of last node in the ring:" + nodeID);
-        return nodeID;
     }
 
     @Override
@@ -616,6 +604,48 @@ public class SimpleDhtProvider extends ContentProvider {
             Log.e("query", "Exception in querying");
         }
         return cursor;
+    }
+
+    @Override
+    public int delete(Uri uri, String selection, String[] selectionArgs) {
+        // TODO Auto-generated method stub
+        Log.v("delete", selection);
+        String[] col = {"key", "value"};
+        MatrixCursor cursor = new MatrixCursor(col);
+
+        try {
+            if (selection.compareTo("@") == 0 || selection.compareTo("*") == 0) { // all local
+                Log.e(TAG, "Delete selection is @");
+                for(int i = 0; i < insertedKeyList.size(); i++) {
+                    String filename = genHash(insertedKeyList.get(i));
+                    boolean res = getContext().deleteFile(filename);
+
+                    Log.e("delete", "Deleted successfully :" + filename);
+                }
+                insertedKeyList.clear();
+                if(selection.compareTo("*") == 0)
+                {
+                    starDeleteQuery();
+                }
+            } else {
+                String filename = genHash(selection);
+                if((succNode == null && predNode == null) ||
+                        (node.compareTo(filename) >= 0 && predNode.compareTo(filename) < 0) ||
+                        (node.compareTo(predNode) < 0 && predNode.compareTo(filename) <= 0 && node.compareTo(filename) <=0) ||
+                        (node.compareTo(predNode) < 0 && node.compareTo(filename) >= 0 && predNode.compareTo(filename) >= 0))
+                {
+                    boolean res = getContext().deleteFile(filename);
+                    Log.e("delete", "Deleted successfully" + filename);
+                    insertedKeyList.remove(selection);
+                } else { // Forward to successor
+                    String msg = "DELETE" + "-" + selection;
+                    sendUpdate(succPort, msg);
+                }
+            }
+        } catch(Exception e) {
+            Log.e("delete", "Exception in deleting");
+        }
+        return 0;
     }
 
     @Override
