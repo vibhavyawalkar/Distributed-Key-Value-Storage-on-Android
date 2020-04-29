@@ -254,7 +254,11 @@ public class SimpleDhtProvider extends ContentProvider {
         } else if(msgtokens[0].equalsIgnoreCase("QUERY")) {
             try {
                 String filename = genHash(msgtokens[1]);
-                if(node.compareTo(filename) >= 0 && predNode.compareTo(filename) < 0) {
+                if(
+                        (node.compareTo(filename) >= 0 && predNode.compareTo(filename) < 0) ||
+                        (node.compareTo(predNode) < 0 && predNode.compareTo(filename) <= 0 && node.compareTo(filename) <=0) ||
+                        (node.compareTo(predNode) < 0 && node.compareTo(filename) >= 0 && predNode.compareTo(filename) >= 0))
+                {
                     String [] col = {"key", "value"};
                     String keyval = "";
                     MatrixCursor cur = (MatrixCursor)query(mUri, null, msgtokens[1], null, null);
@@ -272,7 +276,7 @@ public class SimpleDhtProvider extends ContentProvider {
                     try {
                         Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(succPort));
                         String msgToSend = message + "\n";
-                        // Send Joining request
+
                         OutputStream out = s.getOutputStream();
                         DataOutputStream dos = new DataOutputStream(out);
                         dos.writeBytes(msgToSend);
