@@ -46,9 +46,9 @@ public class SimpleDhtProvider extends ContentProvider {
     static final String [] portList = {"11108", "11112", "11116", "11120", "11124"};
     static final int SERVER_PORT = 10000;
     ArrayList<nodeExists> n = new ArrayList<nodeExists>();
-    HashMap<String, String> hashes = new HashMap<String, String>();
-    HashMap<String, String> portHash = new HashMap<String, String>();
-    static ArrayList<String> insertedKeyList = new ArrayList<String>();
+    HashMap<String, String> portToHashes = new HashMap<String, String>();
+    HashMap<String, String> hashToPort = new HashMap<String, String>();
+    ArrayList<String> insertedKeyList = new ArrayList<String>();
     Uri mUri = buildUri("content", "edu.buffalo.cse.cse486586.simpledht.provider");
     String predNode = null;
     String predPort = null;
@@ -78,11 +78,17 @@ public class SimpleDhtProvider extends ContentProvider {
 
     protected void populateHash() {
         try {
-            hashes.put("11108", genHash("5554"));
-            hashes.put("11112", genHash("5556"));
-            hashes.put("11116", genHash("5558"));
-            hashes.put("11120", genHash("5560"));
-            hashes.put("11124", genHash("5562"));
+            portToHashes.put("11108", genHash("5554"));
+            portToHashes.put("11112", genHash("5556"));
+            portToHashes.put("11116", genHash("5558"));
+            portToHashes.put("11120", genHash("5560"));
+            portToHashes.put("11124", genHash("5562"));
+
+            hashToPort.put(genHash("5554"), "11108");
+            hashToPort.put(genHash("5556"), "11112");
+            hashToPort.put(genHash("5558"), "11116");
+            hashToPort.put(genHash("5560"), "11120");
+            hashToPort.put(genHash("5562"), "11124");
         } catch (NoSuchAlgorithmException e) {
             Log.e(TAG, "No such algorithm exception");
         }
@@ -158,8 +164,8 @@ public class SimpleDhtProvider extends ContentProvider {
 
             if(msgtokens[0].equalsIgnoreCase("PREDSUCC")) {
                 // Update the successor and predecessor
-                predNode = hashes.get(msgtokens[1]);
-                succNode = hashes.get(msgtokens[2]);
+                predNode = portToHashes.get(msgtokens[1]);
+                succNode = portToHashes.get(msgtokens[2]);
                 predPort = msgtokens[1];
                 succPort = msgtokens[2];
                 Log.e(TAG, "PredHash:" + predNode + " " + "SuccHash:" + succNode);
@@ -192,9 +198,9 @@ public class SimpleDhtProvider extends ContentProvider {
                     Log.e(TAG, "Server Running");
                     Socket socket = serverSocket.accept();
                     Log.e(TAG, "Server accepted connection");
-                    // Read data from the client
+                    // Reader to read data from the client
                     BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                    // Send data to the client
+                    // Stream to send data to the client
                     PrintStream ps = new PrintStream(socket.getOutputStream());
 
                     String receive = "";
@@ -204,46 +210,42 @@ public class SimpleDhtProvider extends ContentProvider {
                     } else {
                         Log.e(TAG, "NULL data received from the client");
                     }
-
                 }
             } catch (IOException e) {
                 Log.e(TAG, "Socket IO Exception");
             } catch (Exception e) {
                 Log.e(TAG, "Generic Server Exception");
             }
-
             return null;
         }
     }
 
     protected void handleRequest(String message, PrintStream ps) {
-        Log.e(TAG, "Entering handleRequest");
+        Log.e("handleRequest", "Entering handleRequest");
         String [] msgtokens = message.split("-");
 
-        Log.e(TAG, "Request from client " + msgtokens[0]);
+        Log.e("handleRequest", "Request from client " + msgtokens[0]);
         if(msgtokens[0].equalsIgnoreCase("JOIN")){
             try {
                 String nodePort = msgtokens[1];
-                //String nodeHash = genHash(String.valueOf(Integer.parseInt(nodePort)/2));
-                //addToRing(nodePort, nodeHash);
                 addToRingNew(nodePort, ps);
             } catch(Exception e) {
-                Log.e(TAG, "Caught execption on the server, add to Ring");
+                Log.e("handleRequest", "Caught execption on the server, add to Ring");
             }
         } else if(msgtokens[0].equalsIgnoreCase("PREDSUCC")) {
-            predNode = hashes.get(msgtokens[1]);
-            succNode = hashes.get(msgtokens[2]);
+            predNode = portToHashes.get(msgtokens[1]);
+            succNode = portToHashes.get(msgtokens[2]);
             predPort = msgtokens[1];
             succPort = msgtokens[2];
-            Log.e(TAG, "PredHash:" + predNode +" " + "SuccHash:" + succNode);
+            Log.e("handleRequest", "PredHash:" + predNode +" " + "SuccHash:" + succNode);
         } else if(msgtokens[0].equalsIgnoreCase("PRED")) {
-            predNode = hashes.get(msgtokens[1]);
+            predNode = portToHashes.get(msgtokens[1]);
             predPort = msgtokens[1];
-            Log.e(TAG, "PredHash:" + predNode +" " + "SuccHash:" + succNode);
+            Log.e("handleRequest", "PredHash:" + predNode +" " + "SuccHash:" + succNode);
         } else if(msgtokens[0].equalsIgnoreCase("SUCC")) {
-            succNode = hashes.get(msgtokens[1]);
+            succNode = portToHashes.get(msgtokens[1]);
             succPort = msgtokens[1];
-            Log.e(TAG, "PredHash:" + predNode +" " + "SuccHash:" + succNode);
+            Log.e("handleRequest", "PredHash:" + predNode +" " + "SuccHash:" + succNode);
         } else if(msgtokens[0].equalsIgnoreCase("INSERT")) {
             ContentValues values = new ContentValues();
             values.put("key", msgtokens[1]);
@@ -368,7 +370,7 @@ public class SimpleDhtProvider extends ContentProvider {
 
         if(predecessor.compareTo("11108") == 0) {
             succPort = port;
-            succNode = hashes.get(port);
+            succNode = portToHashes.get(port);
             Log.e(TAG, "Update successor for 11108 to : " + succPort);
         } else {
             String msg1 = "SUCC" + "-" + port;
@@ -377,7 +379,7 @@ public class SimpleDhtProvider extends ContentProvider {
 
         if(successor.compareTo("11108") == 0) {
             predPort = port;
-            predNode = hashes.get(port);
+            predNode = portToHashes.get(port);
             Log.e(TAG, "Update predecessor for 11108 to : " + predPort);
         } else {
             String msg2 = "PRED" + "-" + port;
@@ -472,6 +474,42 @@ public class SimpleDhtProvider extends ContentProvider {
         return;
     }
 
+    protected String firstNodeInRing() {
+        String nodeID = "";
+        for(int i = 0; i < n.size(); i++)
+        {
+            Log.e(TAG, "Port at index:" + i +" " + n.get(i).portStr);
+            if(n.get(i).joined == 1) {
+                try {
+                    nodeID = genHash(String.valueOf(Integer.parseInt(n.get(i).portStr)/2));
+                } catch (NoSuchAlgorithmException e) {
+                    Log.e("firstNodeInRing", "Exception no such algo");
+                }
+                break;
+            }
+        }
+        Log.e(TAG, "Hash of first node in the ring:" + nodeID);
+        return nodeID;
+    }
+
+    protected String lastNodeInRing() {
+        String nodeID = "";
+        for(int i = n.size()-1; i >= 0; i++)
+        {
+            Log.e(TAG, "Port at index:" + i +" " + n.get(i).portStr);
+            if(n.get(i).joined == 1) {
+                try {
+                    nodeID = genHash(String.valueOf(Integer.parseInt(n.get(i).portStr)/2));
+                } catch (NoSuchAlgorithmException e) {
+                    Log.e("firstNodeInRing", "Exception no such algo");
+                }
+                break;
+            }
+        }
+        Log.e(TAG, "Hash of last node in the ring:" + nodeID);
+        return nodeID;
+    }
+
     @Override
     public Uri insert(Uri uri, ContentValues values) {
         // TODO Auto-generated method stub
@@ -479,10 +517,8 @@ public class SimpleDhtProvider extends ContentProvider {
                 + " value:" + values.get("value").toString());
         try {
             String filename = genHash(values.get("key").toString());
-            if((succNode == null && predNode == null) || node.compareTo(filename) >= 0 && predNode.compareTo(filename) < 0) {
-                // less than me and greater than my pred, then it lies between me and my pred
-                // so, it belongs to me
-
+            if((succNode == null && predNode == null)) {
+                // I am the only node in the ring
                 Log.v("insert", "Creating file " + filename);
                 String string = values.get("value").toString();
                 FileOutputStream outputStream;
@@ -492,6 +528,22 @@ public class SimpleDhtProvider extends ContentProvider {
                 outputStream.close();
                 insertedKeyList.add(values.get("key").toString());
                 Log.v("insert", "Successfully inserted " + values.get("value").toString());
+
+            } else if((/*node.compareTo(predNode) > 0 &&*/
+                    node.compareTo(filename) >= 0 && predNode.compareTo(filename) < 0) ||
+                    (node.compareTo(predNode) < 0 && predNode.compareTo(filename) <= 0 && node.compareTo(filename) <=0) ||
+                    (node.compareTo(predNode) < 0 && node.compareTo(filename) >= 0 && predNode.compareTo(filename) >= 0 )
+                ){
+                Log.v("insert", "Creating file " + filename);
+                String string = values.get("value").toString();
+                FileOutputStream outputStream;
+
+                outputStream = getContext().openFileOutput(filename, getContext().MODE_PRIVATE);
+                outputStream.write(string.getBytes());
+                outputStream.close();
+                insertedKeyList.add(values.get("key").toString());
+                Log.v("insert", "Successfully inserted " + values.get("value").toString());
+
             } else { // Sends it to the succNode
                 String msg = "INSERT" + "-" + values.get("key").toString() + "-" + values.get("value").toString();
                 sendUpdate(succPort, msg);
@@ -534,7 +586,10 @@ public class SimpleDhtProvider extends ContentProvider {
             } else {
                 String filename = genHash(selection);
                 if((succNode == null && predNode == null) ||
-                        (node.compareTo(filename) >= 0 && predNode.compareTo(filename) < 0)) {
+                        (node.compareTo(filename) >= 0 && predNode.compareTo(filename) < 0) ||
+                        (node.compareTo(predNode) < 0 && predNode.compareTo(filename) <= 0 && node.compareTo(filename) <=0) ||
+                        (node.compareTo(predNode) < 0 && node.compareTo(filename) >= 0 && predNode.compareTo(filename) >= 0))
+                {
                     // Less than my hash
                     //and greater than my predecessor hash It belongs to me
                     FileInputStream inputStream;
