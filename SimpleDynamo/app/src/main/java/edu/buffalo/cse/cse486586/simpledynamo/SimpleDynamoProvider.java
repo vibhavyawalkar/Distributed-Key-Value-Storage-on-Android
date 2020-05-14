@@ -818,7 +818,9 @@ public class SimpleDynamoProvider extends ContentProvider {
 		Log.e("query", selection);
 		String[] col = {"key", "value"};
 		MatrixCursor cursor = new MatrixCursor(col);
+		ReentrantLock qlock = new ReentrantLock();
 		//queryLock.lock();
+		qlock.lock();
 		try {
 			if (selection.compareTo("@") == 0 || selection.compareTo("*") == 0) { // all local
 				Log.e("query", "Query is @");
@@ -836,9 +838,10 @@ public class SimpleDynamoProvider extends ContentProvider {
 
 					cursor.addRow(row);
 				}
-		//		queryLock.unlock();
+				//queryLock.unlock();
 				if(selection.compareTo("*") == 0)
 				{
+					qlock.unlock();
 					return starQuery(cursor);
 				}
 			} else {
@@ -858,13 +861,15 @@ public class SimpleDynamoProvider extends ContentProvider {
 					String msg = "QUERY" + "-" + selection + "-" + nodePort;
 					MatrixCursor cc = getQueryResponse(port, msg, cursor);
 					if(cc.getCount() == 1) {
-		//				queryLock.unlock();
+						//queryLock.unlock();
+						qlock.unlock();
 						return cc;
 					} else{
 						Log.e("query", "The owner of the key " + port + " failed");
 						Log.e("query", "Get the key from replicas");
 						msg = "QUERYREP" + "-" + selection + "-" + nodePort;
-		//				queryLock.unlock();
+						qlock.unlock();
+			//			queryLock.unlock();
 						return getQueryResponse(firstSuccMap.get(port), msg, cursor);
 					}
 				}
@@ -872,7 +877,8 @@ public class SimpleDynamoProvider extends ContentProvider {
 		} catch(Exception e) {
 			Log.e("query", "Exception in querying");
 			e.printStackTrace();
-		//	queryLock.unlock();
+			//queryLock.unlock();
+			qlock.unlock();
 		}
 		return cursor;
 	}
