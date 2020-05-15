@@ -9,8 +9,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketAddress;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.security.MessageDigest;
@@ -52,6 +54,8 @@ public class SimpleDynamoProvider extends ContentProvider {
 	String node = ""; // My own hash and port
 	String nodePort = "";
 
+	static int queryFlag = 0;
+
 	ReentrantLock insertLock = new ReentrantLock();
 	ReentrantLock queryLock = new ReentrantLock();
 	ReentrantLock deleteLock = new ReentrantLock();
@@ -69,9 +73,13 @@ public class SimpleDynamoProvider extends ContentProvider {
 		for(int i = 0; i < portList.length; i++) {
 			try {
 				String remotePort = portList[i];
-				if (remotePort != nodePort) { // Not my port
-					Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
+				if (remotePort.compareTo(nodePort) != 0) { // Not my port
+					/*Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
 							Integer.parseInt(remotePort));
+					s.setSoTimeout(2000);*/
+					Socket s = new Socket();
+					SocketAddress socketAddress = new InetSocketAddress(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(remotePort));
+					s.connect(socketAddress,2000);
 					String msgToSend = "DELETE*" + "\n";
 
 					OutputStream out = s.getOutputStream();
@@ -254,8 +262,11 @@ public class SimpleDynamoProvider extends ContentProvider {
 		int retval = 0;
 		Log.e("sendUpdate","Send Update message " + msg + " to port " + port);
 		try {
-			Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port));
-			s.setSoTimeout(2000);
+			/*Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port));
+			s.setSoTimeout(2000);*/
+			Socket s = new Socket();
+			SocketAddress socketAddress = new InetSocketAddress(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port));
+			s.connect(socketAddress,2000);
 			String msgToSend = msg + "\n";
 
 			OutputStream out = s.getOutputStream();
@@ -447,9 +458,13 @@ public class SimpleDynamoProvider extends ContentProvider {
 		String receive = "";
 		try {
 			String remotePort = port;
-			Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
+			/*Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
 					Integer.parseInt(remotePort));
-			//s.setSoTimeout(500);
+			s.setSoTimeout(2000);
+			*/
+			Socket s = new Socket();
+			SocketAddress socketAddress = new InetSocketAddress(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(remotePort));
+			s.connect(socketAddress,2000);
 			String msgToSend = "QUERY*" + "\n";
 
 			OutputStream out = s.getOutputStream();
@@ -504,9 +519,12 @@ public class SimpleDynamoProvider extends ContentProvider {
 		String receive = "";
 		try {
 			String remotePort = port;
-			Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
+			Socket s = new Socket();
+			SocketAddress socketAddress = new InetSocketAddress(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(remotePort));
+			/*s.InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
 					Integer.parseInt(remotePort));
-			//s.setSoTimeout(2000);
+			 */
+			s.connect(socketAddress,2000);
 			String msgToSend = "QUERY*" + "\n";
 
 			OutputStream out = s.getOutputStream();
@@ -580,6 +598,9 @@ public class SimpleDynamoProvider extends ContentProvider {
 		populateSecondSuccMap();
 		initNode();
 
+		ReentrantLock mainThreadLock = new ReentrantLock();
+		mainThreadLock.lock();
+		queryFlag = 0;
 		try {
 			Log.e("onCreate", "Creating server task");
 			ServerSocket serverSocket = new ServerSocket(SERVER_PORT);
@@ -597,11 +618,13 @@ public class SimpleDynamoProvider extends ContentProvider {
 			/*SharedPreferences.Editor editor = sharedPref.edit();
 			editor.putBoolean("recover", false);
 			editor.commit();*/
+			queryFlag = 1;
 		} else {
 			Log.e("onCreate", "Creating client task for recovery");
 			new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
 		}
 
+		mainThreadLock.unlock();
 		Log.e("onCreate", "Exiting onCreate");
 		return true;
 	}
@@ -611,8 +634,11 @@ public class SimpleDynamoProvider extends ContentProvider {
 		@Override
 		protected Void doInBackground(String... strings) {
 			try {
-				Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(nodePort));
-				//s.setSoTimeout(2000);
+				/*Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(nodePort));
+				s.setSoTimeout(2000);*/
+				Socket s = new Socket();
+				SocketAddress socketAddress = new InetSocketAddress(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(nodePort));
+				s.connect(socketAddress,2000);
 				String msgToSend = "RECOVER" + "\n";
 				OutputStream out = s.getOutputStream();
 				DataOutputStream dos = new DataOutputStream(out);
@@ -636,6 +662,7 @@ public class SimpleDynamoProvider extends ContentProvider {
 				Log.e("clientTask", "Generic Exception");
 				e.printStackTrace();
 			}
+			queryFlag = 1;
 			return null;
 		}
 	}
@@ -687,7 +714,8 @@ public class SimpleDynamoProvider extends ContentProvider {
 		if(msgtokens[0].equalsIgnoreCase("INSERT")) {
 			insertImm(mUri, msgtokens[1], msgtokens[2]);
 			String msg = "REP" + "-" + msgtokens[1] + "-" + msgtokens[2];
-			replicateInsert(msg);
+			//replicateInsert(msg);
+			/* No need for this since the sender will replicate to all replicas*/
 		} else if(msgtokens[0].equalsIgnoreCase("RECPRED")) {
 			String [] col = {"key", "value"};
 			String keyval = "";
@@ -821,6 +849,10 @@ public class SimpleDynamoProvider extends ContentProvider {
 		ReentrantLock qlock = new ReentrantLock();
 		//queryLock.lock();
 		qlock.lock();
+		while(queryFlag == 0)
+		{
+			Log.e("query", "Keep waiting!!");
+		} /* Keep waiting till recovery is completed */
 		try {
 			if (selection.compareTo("@") == 0 || selection.compareTo("*") == 0) { // all local
 				Log.e("query", "Query is @");
@@ -888,9 +920,14 @@ public class SimpleDynamoProvider extends ContentProvider {
 		for(int i = 0; i < portList.length; i++) {
 			try {
 				String remotePort = portList[i];
-				if(remotePort != nodePort) { // Not my port
+				if(remotePort.compareTo(nodePort) != 0) { // Not my port
+					/*
 					Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
 							Integer.parseInt(remotePort));
+					s.setSoTimeout(2000);*/
+					Socket s = new Socket();
+					SocketAddress socketAddress = new InetSocketAddress(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(remotePort));
+					s.connect(socketAddress,2000);
 					String msgToSend = "QUERY*" + "\n";
 
 					OutputStream out = s.getOutputStream();
@@ -924,7 +961,12 @@ public class SimpleDynamoProvider extends ContentProvider {
 	public MatrixCursor getQueryResponse(String port, String msg, MatrixCursor cur) {
 		Log.e("getQueryResponse","Entering getQueryResponse(..)");
 		try {
-			Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port));
+			/*Socket s = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port));
+			s.setSoTimeout(2000);*/
+			Socket s = new Socket();
+			SocketAddress socketAddress = new InetSocketAddress(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port));
+			s.connect(socketAddress,2000);
+
 			String msgToSend = msg + "\n";
 			// Send query
 			OutputStream out = s.getOutputStream();
